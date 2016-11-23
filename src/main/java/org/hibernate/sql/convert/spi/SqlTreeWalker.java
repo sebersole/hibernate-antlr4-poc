@@ -13,6 +13,7 @@ import java.util.Locale;
 import org.hibernate.QueryException;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.query.proposed.spi.QueryParameterBindings;
+import org.hibernate.sql.ast.sort.SortSpecification;
 import org.hibernate.sql.convert.internal.DomainReferenceRendererSelectionImpl;
 import org.hibernate.sql.convert.internal.DomainReferenceRendererStandardImpl;
 import org.hibernate.sql.spi.ParameterBinder;
@@ -62,6 +63,7 @@ import org.hibernate.sql.ast.predicate.RelationalPredicate;
 import org.hibernate.sql.ast.select.SelectClause;
 import org.hibernate.sql.ast.select.Selection;
 import org.hibernate.sql.exec.results.spi.ReturnReader;
+import org.hibernate.sqm.query.order.SortOrder;
 import org.hibernate.type.LiteralType;
 import org.hibernate.type.Type;
 
@@ -130,6 +132,57 @@ public class SqlTreeWalker implements DomainReferenceRenderer.RenderingContext {
 			finally {
 				currentlyInPredicate = wasPreviouslyInPredicate;
 			}
+		}
+
+		final List<SortSpecification> sortSpecifications = querySpec.getSortSpecifications();
+		if ( sortSpecifications != null && !sortSpecifications.isEmpty() ) {
+			appendSql( " order by " );
+
+			String separator = "";
+			for (SortSpecification sortSpecification : sortSpecifications ) {
+				appendSql( separator );
+				visitSortSpecification( sortSpecification );
+				separator = ", ";
+			}
+		}
+
+		visitLimitOffsetClause( querySpec );
+	}
+
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	// ORDER BY clause
+
+	public void visitSortSpecification(SortSpecification sortSpecification) {
+		sortSpecification.getSortExpression().accept( this );
+
+		final String collation = sortSpecification.getCollation();
+		if ( collation != null ) {
+			appendSql( " collate " );
+			appendSql( collation );
+		}
+
+		final SortOrder sortOrder = sortSpecification.getSortOrder();
+		if ( sortOrder == SortOrder.ASCENDING ) {
+			appendSql( " asc" );
+		} else if ( sortOrder == SortOrder.DESCENDING ) {
+			appendSql( " desc" );
+		}
+	}
+
+	// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	// LIMIT/OFFSET clause
+
+	public void visitLimitOffsetClause(QuerySpec querySpec) {
+		if ( querySpec.getOffsetClauseExpression() != null ) {
+			appendSql( " offset " );
+			querySpec.getOffsetClauseExpression().accept( this );
+			appendSql( " rows" );
+		}
+
+		if ( querySpec.getLimitClauseExpression() != null ) {
+			appendSql( " fetch first " );
+			querySpec.getLimitClauseExpression().accept( this );
+			appendSql( " rows only" );
 		}
 	}
 

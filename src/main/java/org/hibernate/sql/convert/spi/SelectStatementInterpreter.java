@@ -112,6 +112,7 @@ import org.hibernate.sqm.query.from.SqmJoin;
 import org.hibernate.sqm.query.from.SqmRoot;
 import org.hibernate.sqm.query.order.OrderByClause;
 import org.hibernate.sqm.query.order.SortSpecification;
+import org.hibernate.sqm.query.paging.LimitOffsetClause;
 import org.hibernate.sqm.query.predicate.AndSqmPredicate;
 import org.hibernate.sqm.query.predicate.BetweenSqmPredicate;
 import org.hibernate.sqm.query.predicate.GroupedSqmPredicate;
@@ -220,12 +221,6 @@ public class SelectStatementInterpreter extends BaseSemanticQueryWalker {
 
 		sqlAst = new SelectQuery( visitQuerySpec( statement.getQuerySpec() ) );
 
-		if ( statement.getOrderByClause() != null ) {
-			for ( SortSpecification sortSpecification : statement.getOrderByClause().getSortSpecifications() ) {
-				sqlAst.addSortSpecification( visitSortSpecification( sortSpecification ) );
-			}
-		}
-
 		return sqlAst;
 	}
 
@@ -266,6 +261,26 @@ public class SelectStatementInterpreter extends BaseSemanticQueryWalker {
 				querySpecStack.peek().setWhereClauseRestrictions(
 						(Predicate) whereClause.getPredicate().accept( this )
 				);
+			}
+
+			if ( querySpec.getOrderByClause() != null ) {
+				for ( SortSpecification sortSpecification : querySpec.getOrderByClause().getSortSpecifications() ) {
+					querySpecStack.peek().addSortSpecification( visitSortSpecification( sortSpecification ) );
+				}
+			}
+
+			final LimitOffsetClause limitOffsetClause = querySpec.getLimitOffsetClause();
+			if ( limitOffsetClause != null ) {
+				if ( limitOffsetClause.getLimitExpression() != null ) {
+					querySpecStack.peek().setLimitClauseExpression(
+							(Expression) limitOffsetClause.getLimitExpression().accept( this )
+					);
+				}
+				if ( limitOffsetClause.getOffsetExpression() != null ) {
+					querySpecStack.peek().setOffsetClauseExpression(
+							(Expression) limitOffsetClause.getOffsetExpression().accept( this )
+					);
+				}
 			}
 
 			return astQuerySpec;
