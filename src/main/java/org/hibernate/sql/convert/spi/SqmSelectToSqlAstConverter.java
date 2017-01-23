@@ -144,6 +144,7 @@ import org.hibernate.sqm.query.from.SqmJoin;
 import org.hibernate.sqm.query.from.SqmRoot;
 import org.hibernate.sqm.query.order.OrderByClause;
 import org.hibernate.sqm.query.order.SortSpecification;
+import org.hibernate.sqm.query.paging.LimitOffsetClause;
 import org.hibernate.sqm.query.predicate.AndSqmPredicate;
 import org.hibernate.sqm.query.predicate.BetweenSqmPredicate;
 import org.hibernate.sqm.query.predicate.GroupedSqmPredicate;
@@ -265,18 +266,6 @@ public class SqmSelectToSqlAstConverter
 		final QuerySpec querySpec = visitQuerySpec( statement.getQuerySpec() );
 		final SelectQuery sqlAst = new SelectQuery( querySpec );
 
-		if ( statement.getQuerySpec().getOrderByClause() != null ) {
-			currentClauseStack.push( Clause.ORDER );
-			try {
-				for ( SortSpecification sortSpecification : statement.getQuerySpec().getOrderByClause().getSortSpecifications() ) {
-					sqlAst.addSortSpecification( visitSortSpecification( sortSpecification ) );
-				}
-			}
-			finally {
-				currentClauseStack.pop();
-			}
-		}
-
 		return sqlAst;
 	}
 
@@ -324,6 +313,30 @@ public class SqmSelectToSqlAstConverter
 				}
 			}
 
+			final OrderByClause orderByClause = querySpec.getOrderByClause();
+			if ( orderByClause != null ) {
+				currentClauseStack.push( Clause.ORDER );
+				try {
+					for ( SortSpecification sortSpecification : orderByClause.getSortSpecifications() ) {
+						astQuerySpec.addSortSpecification( visitSortSpecification( sortSpecification ) );
+					}
+				}
+				finally {
+					currentClauseStack.pop();
+				}
+			}
+
+			final LimitOffsetClause limitOffsetClause = querySpec.getLimitOffsetClause();
+			if ( limitOffsetClause != null ) {
+				currentClauseStack.push( Clause.LIMIT );
+				try {
+					visitLimitOffsetClause( limitOffsetClause );
+				}
+				finally {
+					currentClauseStack.pop();
+				}
+			}
+
 			// todo : group-by
 			// todo : having
 
@@ -334,6 +347,18 @@ public class SqmSelectToSqlAstConverter
 			assert querySpecStack.pop() == astQuerySpec;
 			assert fromClauseIndex.popFromClause() == astQuerySpec.getFromClause();
 		}
+	}
+
+	@Override
+	public Void visitLimitOffsetClause(LimitOffsetClause limitOffsetClause) {
+		final QuerySpec astQuerySpec = querySpecStack.getCurrent();
+		astQuerySpec.setLimitClauseExpression(
+				(Expression) limitOffsetClause.getLimitExpression().accept( this )
+		);
+		astQuerySpec.setOffsetClauseExpression(
+				(Expression) limitOffsetClause.getOffsetExpression().accept( this )
+		);
+		return null;
 	}
 
 	@Override
